@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex, nofollow, noarchive">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
+    >
+    <title>Password reset | Barbershop Connect</title>
+    <script>
+      // Recovery URLs can contain one-time credentials. Remove them from the
+      // address bar before rendering and never read, display, or forward them.
+      if (window.location.search || window.location.hash) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f4f7fa;
+        color: #172234;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      main {
+        width: min(100%, 520px);
+        padding: 32px;
+        border: 1px solid #d9e1e8;
+        border-radius: 20px;
+        background: #fff;
+        box-shadow: 0 18px 50px rgb(27 42 65 / 10%);
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: #356e70;
+        font-size: 0.82rem;
+        font-weight: 750;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        color: #1b2a41;
+        font-size: clamp(1.75rem, 5vw, 2.35rem);
+        line-height: 1.12;
+      }
+
+      p { line-height: 1.6; }
+
+      .notice {
+        margin: 24px 0;
+        padding: 16px;
+        border-left: 4px solid #5bc0be;
+        border-radius: 8px;
+        background: #eef9f8;
+      }
+
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      a {
+        display: inline-flex;
+        min-height: 44px;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 18px;
+        border: 2px solid #1b2a41;
+        border-radius: 999px;
+        color: #1b2a41;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      a:first-child {
+        background: #1b2a41;
+        color: #fff;
+      }
+
+      a:focus-visible {
+        outline: 3px solid #f9c784;
+        outline-offset: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Barbershop Connect</p>
+      <h1>Continue your password reset securely</h1>
+      <p>
+        Open the password-reset email link on a phone where Barbershop Connect
+        is installed. The verified link should open the app and let you choose
+        a new password.
+      </p>
+      <p class="notice" role="status">
+        This fallback page does not read or display reset credentials. If the
+        app did not open, return to sign in and request a new reset email.
+      </p>
+      <nav aria-label="Password reset help">
+        <a href="../#/">Go to sign in</a>
+        <a href="../#/support">Contact support</a>
+      </nav>
+    </main>
+  </body>
+</html>
