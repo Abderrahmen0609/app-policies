@@ -1,0 +1,2 @@
+// Public anon key from the reviewed build81 app configuration; never a service-role key.
+export const anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndvZGptbGNjenJqeGVleHlod3ByIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc1ODUwNDUsImV4cCI6MjA2MzE2MTA0NX0.n8vo_VE7_D4DSqvuFJT90Gvw-Rr9VcpKsczYw8JIQ-8";
