@@ -7,15 +7,39 @@ No app entry, app Auth behavior, app version, or hosted configuration is changed
 The page requests recovery only after the visitor submits an email. It generates
 a random 256-bit PKCE verifier and an independent request nonce using Web Crypto,
 then sends an S256 challenge to the existing project's `/auth/v1/recover` route.
-Only the verifier, nonce, phase, and creation time are stored in a uniquely named
-local-storage record. This permits an email link to open in another tab of the
-same browser. No email, password, session token, or refresh token is stored there.
+The verifier, nonce, phase, and creation time are stored in a uniquely named
+local-storage record. A send in progress may retain one previous pending record
+inside it until the replacement is accepted. This permits an email link to open
+in another tab of the same browser. No email, password, session token, or refresh
+token is stored there.
 The record expires locally after 30 minutes and is removed when consumed or when
 an expired record is next used. A newer request replaces the pending local
-verifier. It does not revoke a recovery session that was already exchanged in
-another page's memory. Local-storage operations are not a cross-tab transaction;
-the in-flight nonce check rejects changes it observes, without promising strict
-cross-tab locking or revocation.
+verifier after acceptance. A definite HTTP429 restores its still-valid previous
+pending context; an unknown response retains the attempted context because an
+email may already have been sent. It does not revoke a recovery session that was
+already exchanged in another page's memory.
+
+The page requires the browser's same-origin Web Locks API to serialize short
+context read/write transitions between current pages. The lock is never held
+across an Auth network call: an old or newly delivered callback can complete
+while a send response is pending. A second send started within an in-flight
+send's 30-second request timeout is refused locally without an extra Auth call.
+A callback consumes only its matching pending verifier. Cleanup checks the
+current nonce and never replaces a consumed or newer observed context. Older
+already-open page versions do not participate in the lock, so their unobserved
+storage interleavings cannot be promised transactional protection. Browsers
+without Web Locks fail closed with a current-compatible-browser instruction
+before storage or Auth is accessed.
+
+On HTTP429, only a validated Retry-After delay is retained, with a one-second
+minimum and one-hour local maximum. Exact HTTP-date and integer-seconds values
+are accepted; absent, hidden, invalid, or past-date values use a clearly labeled
+60-second local pause. A separate non-sensitive storage record contains only the
+pause's timestamp, deadline, source label and schema. The deadline survives reload
+and is checked before any send. The form counts down and permits another manual
+attempt after the local deadline, while explicitly warning that the server may
+require a longer wait. It never automatically sends or claims the rate limit has
+reset. No rate-limit, SMTP, password-policy, or hosted Auth setting is changed.
 
 The callback accepts only the exact HTTPS page, one code, and a matching nonce.
 It captures and clears the callback URL before fallible frame/storage/Auth setup,
@@ -68,7 +92,7 @@ when embedded in a frame. Other app preferences and Auth-storage keys are untouc
 Run the existing Node runtime, without installing packages:
 
 ```text
-node --test tests/melligo-recovery.test.mjs tests/melligo-recovery-page.test.mjs
+node --test tests/melligo-recovery.test.mjs tests/melligo-recovery-page.test.mjs tests/melligo-recovery-rate-limit.test.mjs
 ```
 
 The tests use synthetic values, injected storage/fetch, the real form bindings,

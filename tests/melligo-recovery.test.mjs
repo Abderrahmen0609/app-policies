@@ -36,7 +36,7 @@ function fakeApi() {
 }
 function fixture({ storage = memory(), api = fakeApi(), now = () => NOW } = {}) {
   const notices = [];
-  const controller = createRecovery({ storage, api, now, crypto: webcrypto, notify: (state) => notices.push(state) });
+  const controller = createRecovery({ storage, api, now, crypto: webcrypto, contextLock: (_signal, action) => action(), notify: (state) => notices.push(state) });
   return { controller, storage, api, notices };
 }
 const response = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -162,8 +162,11 @@ test('observed newer nonce during an outstanding exchange rejects its earlier re
 test('late exchange after disposal never opens a password form', async () => {
   const f = fixture(); saved(f.storage);
   let release;
-  f.api.exchange = () => new Promise((resolve) => { release = resolve; });
+  let entered;
+  const exchanging = new Promise((resolve) => { entered = resolve; });
+  f.api.exchange = () => { entered(); return new Promise((resolve) => { release = resolve; }); };
   const pending = f.controller.initialize(callback, () => {});
+  await exchanging;
   f.controller.dispose(); release({ token: TOKEN, expiresAt: NOW + 600_000 }); await pending;
   assert.equal(f.notices.some((notice) => notice.phase === 'password'), false);
   assert.equal(f.api.calls[0][0], 'logout');

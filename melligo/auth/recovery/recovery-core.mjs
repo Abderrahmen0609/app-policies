@@ -2,13 +2,33 @@ export const RECOVERY_URL = 'https://abderrahmen0609.github.io/app-policies/mell
 export const PROJECT_URL = 'https://wodjmlcczrjxeexyhwpr.supabase.co';
 export const STORAGE_KEY = 'melligo-password-recovery-pkce-v1';
 export const REQUEST_LIFETIME = 30 * 60 * 1000;
+export const COOLDOWN_KEY = 'melligo-password-recovery-cooldown-v1';
+export const CONTEXT_LOCK = 'melligo-password-recovery-context-v1';
+export const DEFAULT_RETRY_DELAY = 60_000;
+export const MAX_RETRY_DELAY = 60 * 60 * 1000;
 const SAFE = /^[A-Za-z0-9_-]{43}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 export class RecoveryError extends Error {
-  constructor(code) { super(code); this.code = code; }
+  constructor(code, retry = null) { super(code); this.code = code; this.retry = retry; }
 }
 const fail = (code) => { throw new RecoveryError(code); };
+
+// Retry-After is untrusted and may be hidden by CORS. Never use it as a timer
+// outside this bounded local pause, or promise that the next send will succeed.
+export function retryDelay(value, now) {
+  const fallback = { delay: DEFAULT_RETRY_DELAY, source: 'local' };
+  if (typeof value !== 'string' || value.length > 128) return fallback;
+  const text = value.trim();
+  let delay;
+  if (/^\d{1,10}$/.test(text)) delay = Number(text) * 1000;
+  else if (/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(text)) {
+    const date = Date.parse(text);
+    if (!Number.isFinite(date) || new Date(date).toUTCString() !== text || date <= now) return fallback;
+    delay = date - now;
+  } else return fallback;
+  return { delay: Math.max(1000, Math.min(delay, MAX_RETRY_DELAY)), source: 'server' };
+}
 const base64url = (bytes) => btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 const decode = (value) => JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(
   Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(value.length / 4) * 4, '=')), (c) => c.charCodeAt(0)),
@@ -77,7 +97,8 @@ export function createAuthApi({ anonKey, fetch: fetcher, now = Date.now }) {
       });
     } catch { fail('connection_error'); }
     if (!response.ok) {
-      if (response.status === 429) fail('rate_limited');
+      if (response.status === 429) throw new RecoveryError('rate_limited', retryDelay(response.headers.get('retry-after'), now()));
+      if (response.status >= 500 && path.startsWith('recover?')) fail('connection_error');
       if (response.status === 401 || response.status === 403 || (response.status === 400 && path.startsWith('token?'))) fail('expired_link');
       fail('request_rejected');
     }
@@ -133,16 +154,50 @@ export function createAuthApi({ anonKey, fetch: fetcher, now = Date.now }) {
   };
 }
 
-export function createRecovery({ storage, crypto, api, now = Date.now, notify = () => {} }) {
+export function createRecovery({ storage, crypto, api, contextLock, now = Date.now, notify = () => {} }) {
+  if (typeof contextLock !== 'function') fail('compatible_browser');
   let state = { phase: 'request', error: null };
   let session = null;
   let busy = false;
   let disposed = false;
   let operation = null;
   let flowNonce = null;
-  const emit = (phase, error = null) => { if (!disposed) { state = { phase, error }; notify({ ...state }); } };
+  let cooldownUntil = 0;
+  let cooldownSource = null;
+  const snapshot = () => ({ ...state, busy, cooldownUntil, cooldownSource });
+  const emit = (phase, error = null) => { if (!disposed) { state = { phase, error }; notify(snapshot()); } };
   const store = (value) => { try { storage.setItem(STORAGE_KEY, JSON.stringify(value)); } catch { fail('storage_unavailable'); } };
   const remove = () => { try { storage.removeItem(STORAGE_KEY); } catch { fail('storage_unavailable'); } };
+  const readCooldown = () => {
+    try {
+      const raw = storage.getItem(COOLDOWN_KEY);
+      if (!raw || raw.length > 256) return;
+      const saved = JSON.parse(raw);
+      if (saved.schema !== 1 || !Number.isSafeInteger(saved.at) || !Number.isSafeInteger(saved.until)
+        || saved.at > now() + 60_000 || saved.until <= saved.at || saved.until > saved.at + MAX_RETRY_DELAY
+        || saved.until > now() + MAX_RETRY_DELAY
+        || !['local', 'server'].includes(saved.source)) return;
+      if (saved.until > now() && saved.until > cooldownUntil) {
+        cooldownUntil = saved.until; cooldownSource = saved.source;
+      }
+    } catch { /* A pause is advisory; request-context storage must still pass. */ }
+  };
+  const pause = (retry) => {
+    const safe = retry && Number.isFinite(retry.delay) && ['local', 'server'].includes(retry.source)
+      ? { delay: Math.max(1000, Math.min(retry.delay, MAX_RETRY_DELAY)), source: retry.source }
+      : { delay: DEFAULT_RETRY_DELAY, source: 'local' };
+    const at = now();
+    readCooldown();
+    if (at + safe.delay > cooldownUntil) { cooldownUntil = at + safe.delay; cooldownSource = safe.source; }
+    try { storage.setItem(COOLDOWN_KEY, JSON.stringify({ schema: 1, at, until: cooldownUntil, source: cooldownSource })); }
+    catch { /* Keep the RAM pause even if saving the advisory deadline fails. */ }
+  };
+  const pendingCopy = (value) => {
+    if (!value || value.schema !== 1 || !['pending', 'requesting'].includes(value.phase)
+      || !SAFE.test(value.nonce) || !SAFE.test(value.verifier) || !Number.isSafeInteger(value.createdAt)
+      || value.createdAt > now() + 60_000 || now() >= value.createdAt + REQUEST_LIFETIME) return null;
+    return { schema: 1, phase: 'pending', nonce: value.nonce, verifier: value.verifier, createdAt: value.createdAt };
+  };
   const run = async (phase, action) => {
     if (busy || disposed) return;
     busy = true;
@@ -154,24 +209,36 @@ export function createRecovery({ storage, crypto, api, now = Date.now, notify = 
     finally { clearTimeout(timeout); busy = false; operation = null; }
   };
   return {
-    state: () => ({ ...state, busy }),
+    state: snapshot,
     initialize(href, clearUrl) {
       return run('checking', async (signal) => {
         let parsed;
         try { parsed = parseReturn(href); } finally { clearUrl(); }
-        if (parsed.kind === 'request') { emit('request'); return; }
+        if (parsed.kind === 'request') {
+          await contextLock(signal, readCooldown);
+          emit('request', cooldownUntil > now() ? 'rate_limited' : null); return;
+        }
         if (parsed.kind === 'failed') fail('expired_link');
-        const saved = readContext(storage, now());
-        if (saved.phase !== 'pending' || !SAFE.test(saved.verifier) || saved.nonce !== parsed.nonce) fail('same_browser_required');
-        flowNonce = saved.nonce;
-        // Consume the verifier before exchange; a reload/uncertain exchange needs a new request.
-        store({ schema: 1, phase: 'exchanging', nonce: saved.nonce, createdAt: saved.createdAt });
+        const saved = await contextLock(signal, () => {
+          const current = readContext(storage, now());
+          // A callback need not wait behind another tab's network send. Its old
+          // verifier remains available until that replacement is accepted.
+          const candidate = current.nonce === parsed.nonce ? pendingCopy(current)
+            : current.phase === 'requesting' ? pendingCopy(current.previous) : null;
+          if (!candidate || candidate.nonce !== parsed.nonce) fail('same_browser_required');
+          flowNonce = candidate.nonce;
+          // Consume before exchange; an uncertain exchange cannot be replayed.
+          store({ schema: 1, phase: 'exchanging', nonce: candidate.nonce, createdAt: candidate.createdAt });
+          return candidate;
+        });
         const received = await api.exchange(parsed.code, saved.verifier, signal);
         try {
           if (disposed) fail('cancelled');
-          const current = readContext(storage, now());
-          if (current.phase !== 'exchanging' || current.nonce !== flowNonce) fail('newer_request');
-          remove();
+          await contextLock(signal, () => {
+            const current = readContext(storage, now());
+            if (current.phase !== 'exchanging' || current.nonce !== flowNonce) fail('newer_request');
+            remove();
+          });
         } catch (error) {
           await api.logout(received.token).catch(() => {});
           throw error;
@@ -185,12 +252,52 @@ export function createRecovery({ storage, crypto, api, now = Date.now, notify = 
         if (session) fail('request_rejected');
         const normalized = typeof email === 'string' ? email.trim() : '';
         if (normalized.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) fail('invalid_email');
+        let previous = null;
         const pair = await makePkce(crypto);
         if (disposed) return;
-        flowNonce = pair.nonce;
-        store({ schema: 1, phase: 'pending', nonce: pair.nonce, verifier: pair.verifier, createdAt: now() });
-        await api.request(normalized, pair.challenge, pair.nonce, signal);
-        if (!disposed) emit('sent'); // Same acknowledgement whether or not the account exists.
+        await contextLock(signal, () => {
+          readCooldown();
+          if (cooldownUntil > now()) fail('rate_limited');
+          try {
+            const saved = readContext(storage, now());
+            if (saved.phase === 'requesting' && now() < saved.createdAt + 30_000) fail('request_in_progress');
+            previous = pendingCopy(saved);
+          } catch (error) {
+            if (['storage_unavailable', 'request_in_progress'].includes(error.code)) throw error;
+          }
+          flowNonce = pair.nonce;
+          store({ schema: 1, phase: 'requesting', nonce: pair.nonce, verifier: pair.verifier, createdAt: now(), ...(previous ? { previous } : {}) });
+        });
+        const finish = (rejected) => contextLock(signal, () => {
+          if (rejected) pause(rejected.retry);
+          let current;
+          try { current = readContext(storage, now()); } catch { return false; }
+          // The lock covers only storage transitions, never a network request.
+          // A consumed or newer observed nonce always wins over this cleanup.
+          if (current.phase !== 'requesting' || current.nonce !== pair.nonce) return false;
+          if (rejected) {
+            const retained = pendingCopy(previous);
+            if (retained) { store(retained); flowNonce = retained.nonce; }
+            else remove();
+          } else {
+            const retained = pendingCopy(current);
+            if (retained) store(retained);
+          }
+          return true;
+        });
+        try { await api.request(normalized, pair.challenge, pair.nonce, signal); }
+        catch (error) {
+          if (error instanceof RecoveryError && error.code === 'rate_limited') {
+            await finish(error);
+          } else await finish(null).catch(() => {});
+          // A network timeout may have sent an email. Keep its verifier and the
+          // check-inbox message; never restore an old flow or resend blindly.
+          throw error;
+        }
+        const pending = await finish(null);
+        // A link can be opened before this HTTP response arrives. Do not tell
+        // that sender to reopen an already-consumed email or discard its form.
+        if (!disposed) emit(pending ? 'sent' : 'handled');
       });
     },
     update(password, confirmation) {
@@ -218,10 +325,12 @@ export function createRecovery({ storage, crypto, api, now = Date.now, notify = 
         const old = session;
         session = null;
         if (old) await api.logout(old.token, signal).catch(() => {});
-        try {
-          const saved = readContext(storage, now());
-          if (saved.nonce === flowNonce) remove();
-        } catch { /* Expired/missing storage has no reusable local session. */ }
+        await contextLock(signal, () => {
+          try {
+            const saved = readContext(storage, now());
+            if (saved.nonce === flowNonce) remove();
+          } catch { /* Expired/missing storage has no reusable local session. */ }
+        });
         emit('request');
       });
     },
