@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'; connect-src https://tcyzzjhhvilcqzfbuwzk.supabase.co/auth/v1/; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>Recover your Melliti Nexus account · Melliti Nexus</title>
+  <link rel="stylesheet" href="recovery.css">
+  <script type="module" src="recovery-page.mjs"></script>
+</head>
+<body>
+  <header class="topbar"><span class="company">MELLITI NEXUS</span><a href="mailto:contact@mellitinexus.com">Need help? ↗</a></header>
+  <main class="shell"><section class="card"><div class="hero">
+    <div class="brand"><img src="logo.png" alt="Melliti Nexus" width="76" height="76"><div><strong>Melliti Nexus</strong><p>YOUR CONNECTED APPS</p></div></div>
+    <p class="eyebrow">ACCOUNT ACCESS</p><h1>Back to your<br>shared account.</h1>
+    <p class="shared-account" id="shared-account-notice"><strong>One account across four apps.</strong>CoParent, CleanRoutine, NexusConnect and NomadNest use the same Melliti Nexus email and password. Changing it here changes the password for all four apps. This does not change your family-sharing choices or app records.</p>
+    <p id="status" class="description" role="status" aria-live="polite">Preparing account recovery…</p>
+    <form id="request-form" hidden>
+      <label for="email">Your Melliti Nexus email</label><input id="email" type="email" autocomplete="email" maxlength="254" required>
+      <button type="submit">Send recovery email</button>
+      <p class="hint">Use the same browser to request and open the link. A new request replaces this browser’s pending request. This page keeps its temporary request for 30 minutes.</p>
+    </form>
+    <form id="password-form" hidden>
+      <label for="password">New password</label><input id="password" type="password" autocomplete="new-password" minlength="8" maxlength="256" required>
+      <label for="confirmation">Confirm new password</label><input id="confirmation" type="password" autocomplete="new-password" minlength="8" maxlength="256" required>
+      <p class="hint">Use at least 8 characters. Your account’s additional password rules still apply.</p>
+      <button type="submit">Change password</button>
+    </form>
+    <button id="restart" class="secondary" type="button" hidden>Start a new request</button>
+    <noscript><p>JavaScript is needed for account recovery. Contact <a href="mailto:contact@mellitinexus.com">contact@mellitinexus.com</a> for help.</p></noscript>
+  </div><footer class="card-footer">Need a hand? <a href="mailto:contact@mellitinexus.com">contact@mellitinexus.com</a></footer></section>
+  <footer class="bottom"><span>CoParent · CleanRoutine · NexusConnect · NomadNest</span><a href="https://abderrahmen0609.github.io/app-policies/coparent/" rel="noreferrer">Privacy policy</a></footer></main>
+</body>
+</html>
