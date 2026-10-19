@@ -13,16 +13,16 @@ export async function mountRecovery({ document, window, history, publicAnon = an
   const status = document.querySelector('#status');
   const restart = document.querySelector('#restart');
   const messages = {
-    checking: 'Checking your recovery linkâ€¦',
-    sending: 'Requesting your recovery emailâ€¦',
+    checking: 'Checking your recovery link...',
+    sending: 'Requesting your recovery email...',
     sent: 'If this email has a MelliGo account, a recovery email will arrive. Open the latest link in this same browser. Keep this browser available.',
-    saving: 'Changing your passwordâ€¦',
+    saving: 'Changing your password...',
     complete: 'Your password has changed. Close this page and sign in to MelliGo with your new password.',
     uncertain: 'The password change could not be confirmed. Try signing in to MelliGo before requesting another recovery link. This page will not repeat the change.',
   };
   const errors = {
     invalid_email: 'Enter a valid email address.',
-    password_rules: 'Use 8 to 256 characters without line breaks. Your accountâ€™s additional password rules still apply.',
+    password_rules: 'Use 8 to 256 characters without line breaks. Your account\'s additional password rules still apply.',
     password_mismatch: 'The two passwords do not match.',
     same_browser_required: 'Open the latest link in the browser where you requested it. If you used another browser or device, start a new request here.',
     expired_link: 'This link or recovery session is invalid or has expired. Start a new request and use its latest email.',
